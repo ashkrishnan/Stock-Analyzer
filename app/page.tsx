@@ -26,8 +26,7 @@ export default function StockAnalyzer() {
 
   // Calculate moving average
   const calculateMA = (data: number[], period: number): (number | null)[] => {
-    const result = [];
-    for (let i = 0; i < data.length; i++) {
+const result: (number | null)[] = [];    for (let i = 0; i < data.length; i++) {
       if (i < period - 1) {
         result.push(null);
       } else {
