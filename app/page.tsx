@@ -39,43 +39,45 @@ const StockAnalyzer: React.FC = () => {
     return result;
   };
 
-  // Fetch real stock data using our API proxy
+  // Fetch real stock data using Alpha Vantage API
   const fetchStockData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      // Call our API route instead of Yahoo Finance directly
-      const response = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}`);
+      // Your Alpha Vantage API key
+      const API_KEY = 'S041G6VJ4B6NN8ED';
+      const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=full&apikey=${API_KEY}`;
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
       
-      if (!data.chart?.result?.[0]) {
+      // Check for API error messages
+      if (data['Error Message']) {
         throw new Error('Invalid symbol or no data available');
       }
       
-      const result = data.chart.result[0];
-      const timestamps = result.timestamp;
-      const prices = result.indicators.quote[0];
+      if (data['Note']) {
+        throw new Error('API call frequency limit reached. Please try again later.');
+      }
       
-      if (!timestamps || !prices.close) {
+      const timeSeries = data['Time Series (Daily)'];
+      if (!timeSeries) {
         throw new Error('No price data available for this symbol');
       }
       
-      // Transform the data into our format
-      const transformedData: StockData[] = timestamps.map((timestamp: number, index: number) => {
-        const date = new Date(timestamp * 1000);
-        return {
-          date: date.toISOString().split('T')[0],
-          price: parseFloat((prices.close[index] || 0).toFixed(2)),
-          volume: prices.volume?.[index] || 0
-        };
-      }).filter((item: StockData) => item.price > 0); // Filter out invalid prices
+      // Transform the data into our format (last 365 days)
+      const dates = Object.keys(timeSeries).sort().slice(-365);
+      const transformedData: StockData[] = dates.map(date => ({
+        date,
+        price: parseFloat(timeSeries[date]['4. close']),
+        volume: parseInt(timeSeries[date]['5. volume']) || 0
+      }));
       
       if (transformedData.length === 0) {
         throw new Error('No valid price data found for this symbol');
@@ -87,6 +89,8 @@ const StockAnalyzer: React.FC = () => {
       if (err instanceof Error) {
         if (err.message.includes('Invalid symbol')) {
           setError(`"${symbol}" is not a valid stock symbol. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
+        } else if (err.message.includes('frequency limit')) {
+          setError('API rate limit reached. Please wait a moment and try again.');
         } else if (err.message.includes('HTTP error')) {
           setError('Unable to fetch stock data. Please check your internet connection and try again.');
         } else {
@@ -164,7 +168,7 @@ const StockAnalyzer: React.FC = () => {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Stock Analyzer</h1>
           <p className="text-lg text-gray-600">Analyze real-time stock prices with moving averages</p>
-          <p className="text-sm text-gray-500 mt-1">Live data from Yahoo Finance</p>
+          <p className="text-sm text-gray-500 mt-1">Live data from Alpha Vantage</p>
         </div>
 
         {/* Stock Input Form */}
