@@ -39,41 +39,67 @@ const StockAnalyzer: React.FC = () => {
     return result;
   };
 
-  // Generate sample data for demo purposes
-  const generateSampleData = (symbol: string): StockData[] => {
-    const data: StockData[] = [];
-    const basePrice = Math.random() * 100 + 50;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 365);
-
-    for (let i = 0; i < 365; i++) {
-      const currentDate = new Date(startDate);
-      currentDate.setDate(startDate.getDate() + i);
-      
-      const randomChange = (Math.random() - 0.5) * 10;
-      const price = Math.max(1, basePrice + randomChange + Math.sin(i / 30) * 20);
-      
-      data.push({
-        date: currentDate.toISOString().split('T')[0],
-        price: parseFloat(price.toFixed(2)),
-        volume: Math.floor(Math.random() * 1000000) + 500000
-      });
-    }
-    return data;
-  };
-
+  // Fetch real stock data from Yahoo Finance API
   const fetchStockData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      // For demo purposes, we'll generate sample data
-      // In a real app, you'd call an API like Alpha Vantage, Yahoo Finance, etc.
-      const data = generateSampleData(symbol);
-      setStockData(data);
+      // Get the date range (1 year ago to today)
+      const endDate = Math.floor(Date.now() / 1000);
+      const startDate = Math.floor((Date.now() - 365 * 24 * 60 * 60 * 1000) / 1000);
+      
+      // Yahoo Finance API endpoint
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startDate}&period2=${endDate}&interval=1d&includePrePost=true&events=div%7Csplit`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.chart?.result?.[0]) {
+        throw new Error('Invalid symbol or no data available');
+      }
+      
+      const result = data.chart.result[0];
+      const timestamps = result.timestamp;
+      const prices = result.indicators.quote[0];
+      
+      if (!timestamps || !prices.close) {
+        throw new Error('No price data available for this symbol');
+      }
+      
+      // Transform the data into our format
+      const transformedData: StockData[] = timestamps.map((timestamp: number, index: number) => {
+        const date = new Date(timestamp * 1000);
+        return {
+          date: date.toISOString().split('T')[0],
+          price: parseFloat((prices.close[index] || 0).toFixed(2)),
+          volume: prices.volume?.[index] || 0
+        };
+      }).filter((item: StockData) => item.price > 0); // Filter out invalid prices
+      
+      if (transformedData.length === 0) {
+        throw new Error('No valid price data found for this symbol');
+      }
+      
+      setStockData(transformedData);
     } catch (err) {
-      setError('Failed to fetch stock data. Please try again.');
-      console.error('Error fetching data:', err);
+      console.error('Error fetching stock data:', err);
+      if (err instanceof Error) {
+        if (err.message.includes('Invalid symbol')) {
+          setError(`"${symbol}" is not a valid stock symbol. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
+        } else if (err.message.includes('HTTP error')) {
+          setError('Unable to fetch stock data. Please check your internet connection and try again.');
+        } else {
+          setError(`Error: ${err.message}`);
+        }
+      } else {
+        setError('Failed to fetch stock data. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -142,7 +168,8 @@ const StockAnalyzer: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Stock Analyzer</h1>
-          <p className="text-lg text-gray-600">Analyze stock prices with moving averages</p>
+          <p className="text-lg text-gray-600">Analyze real-time stock prices with moving averages</p>
+          <p className="text-sm text-gray-500 mt-1">Live data from Yahoo Finance</p>
         </div>
 
         {/* Stock Input Form */}
@@ -158,7 +185,7 @@ const StockAnalyzer: React.FC = () => {
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter stock symbol (e.g., AAPL)"
+                placeholder="Enter stock symbol (e.g., AAPL, MSFT, GOOGL)"
               />
             </div>
             <button
