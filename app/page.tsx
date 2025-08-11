@@ -8,9 +8,9 @@ export default function StockAnalyzer() {
   const [selectedStock, setSelectedStock] = useState('NVDA');
   const [timeframe, setTimeframe] = useState('6mo');
   const [isConnected, setIsConnected] = useState(false);
-const [lastUpdate, setLastUpdate] = useState(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   
   // Display options
   const [showMA9, setShowMA9] = useState(true);
@@ -21,11 +21,11 @@ const [lastUpdate, setLastUpdate] = useState(null);
   const [showTrendLines, setShowTrendLines] = useState(true);
 
   // Stock data state
-  const [stockData, setStockData] = useState([]);
-  const [stockMeta, setStockMeta] = useState({});
+  const [stockData, setStockData] = useState<any[]>([]);
+  const [stockMeta, setStockMeta] = useState<any>({});
 
   // Calculate moving average
-  const calculateMA = (data, period) => {
+  const calculateMA = (data: number[], period: number): (number | null)[] => {
     const result = [];
     for (let i = 0; i < data.length; i++) {
       if (i < period - 1) {
@@ -39,7 +39,7 @@ const [lastUpdate, setLastUpdate] = useState(null);
   };
 
   // Fetch live data from Yahoo Finance
-  const fetchLiveStockData = async (symbol, range = '6mo') => {
+  const fetchLiveStockData = async (symbol: string, range = '6mo') => {
     setLoading(true);
     setError(null);
     
@@ -69,10 +69,10 @@ const [lastUpdate, setLastUpdate] = useState(null);
       const quotes = result.indicators.quote[0];
       
       // Process the data
-      const prices = quotes.close.filter(price => price !== null);
-      const volumes = quotes.volume.filter(vol => vol !== null);
-      const highs = quotes.high.filter(high => high !== null);
-      const lows = quotes.low.filter(low => low !== null);
+      const prices = quotes.close.filter((price: number) => price !== null);
+      const volumes = quotes.volume.filter((vol: number) => vol !== null);
+      const highs = quotes.high.filter((high: number) => high !== null);
+      const lows = quotes.low.filter((low: number) => low !== null);
       
       // Calculate moving averages
       const ma9 = calculateMA(prices, 9);
@@ -80,7 +80,7 @@ const [lastUpdate, setLastUpdate] = useState(null);
       const ma200 = calculateMA(prices, 200);
       
       // Format data for chart
-      const chartData = timestamps.map((timestamp, index) => {
+      const chartData = timestamps.map((timestamp: number, index: number) => {
         if (quotes.close[index] === null) return null;
         
         const date = new Date(timestamp * 1000);
@@ -95,7 +95,7 @@ const [lastUpdate, setLastUpdate] = useState(null);
           ma200: ma200[index] ? Math.round(ma200[index] * 100) / 100 : null,
           index: index
         };
-      }).filter(item => item !== null);
+      }).filter((item: any) => item !== null);
       
       // Current values (last available data)
       const currentPrice = prices[prices.length - 1];
@@ -129,7 +129,7 @@ const [lastUpdate, setLastUpdate] = useState(null);
       
       return { data: chartData, meta: metaData };
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('API Error:', err);
       setError(err.message);
       setIsConnected(false);
@@ -147,8 +147,8 @@ const [lastUpdate, setLastUpdate] = useState(null);
   };
 
   // Fallback demo data generator
-  const generateDemoData = (symbol, range) => {
-    const ranges = {
+  const generateDemoData = (symbol: string, range: string) => {
+    const ranges: any = {
       'NVDA': { current: 182.70, ma9: 178.61, ma50: 161.46, ma200: 135.87, low52w: 86.62, high52w: 183.88 },
       'ANET': { current: 139.18, ma9: 137.50, ma50: 135.20, ma200: 128.90, low52w: 95.00, high52w: 148.50 },
       'AVGO': { current: 304.97, ma9: 302.10, ma50: 298.50, ma200: 285.40, low52w: 210.45, high52w: 310.34 },
@@ -204,13 +204,15 @@ const [lastUpdate, setLastUpdate] = useState(null);
     const interval = setInterval(loadData, 60000);
     return () => clearInterval(interval);
   }, [selectedStock, timeframe]);
-useEffect(() => {
-  setLastUpdate(new Date());
-}, []);
+
+  useEffect(() => {
+    setLastUpdate(new Date());
+  }, []);
+
   // Technical Analysis Functions
-  const findSwingPoints = (data, window = 8) => {
-    const highs = [];
-    const lows = [];
+  const findSwingPoints = (data: any[], window = 8) => {
+    const highs: any[] = [];
+    const lows: any[] = [];
     
     for (let i = window; i < data.length - window; i++) {
       const current = data[i].price;
@@ -228,7 +230,7 @@ useEffect(() => {
     return { highs: highs.slice(-6), lows: lows.slice(-6) };
   };
 
-  const findSupportResistance = (data) => {
+  const findSupportResistance = (data: any[]) => {
     if (!data.length) return [];
     
     const currentPrice = data[data.length - 1].price;
@@ -237,7 +239,7 @@ useEffect(() => {
     const recentHigh = Math.max(...prices);
     const recentLow = Math.min(...prices);
     
-    const levels = [];
+    const levels: any[] = [];
     
     if (recentHigh > currentPrice * 1.01) {
       levels.push({ price: recentHigh, type: 'resistance', label: 'Recent High' });
@@ -269,9 +271,9 @@ useEffect(() => {
     return levels;
   };
 
-  const calculateTrendLines = (swingPoints) => {
+  const calculateTrendLines = (swingPoints: any) => {
     const { highs, lows } = swingPoints;
-    const trendLines = [];
+    const trendLines: any[] = [];
     
     // Uptrend from lows
     if (lows.length >= 2) {
@@ -354,8 +356,8 @@ useEffect(() => {
                 <span>{isConnected ? 'Yahoo Finance Connected' : 'Using Demo Data'}</span>
               </div>
               <div className="text-xs text-gray-500">
-  Last Update: {lastUpdate ? lastUpdate.toLocaleTimeString() : 'Loading...'}
-</div>
+                Last Update: {lastUpdate ? lastUpdate.toLocaleTimeString() : 'Loading...'}
+              </div>
               {error && (
                 <div className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
                   {error}
@@ -493,7 +495,7 @@ useEffect(() => {
               />
               <Tooltip 
                 formatter={(value, name) => {
-                  const labels = {
+                  const labels: any = {
                     'price': 'Price',
                     'ma9': '9-day MA',
                     'ma50': '50-day MA', 
@@ -551,7 +553,7 @@ useEffect(() => {
               )}
 
               {/* Support/Resistance Lines */}
-              {showSupportResistance && supportResistanceLevels.map((level, index) => (
+              {showSupportResistance && supportResistanceLevels.map((level: any, index: number) => (
                 <ReferenceLine
                   key={`sr-${index}`}
                   y={level.price}
@@ -571,7 +573,7 @@ useEffect(() => {
               ))}
 
               {/* Trend Lines */}
-              {showTrendLines && trendLines.map((trendLine, index) => {
+              {showTrendLines && trendLines.map((trendLine: any, index: number) => {
                 const startPrice = trendLine.slope * trendLine.startIndex + trendLine.intercept;
                 const endPrice = trendLine.slope * trendLine.endIndex + trendLine.intercept;
                 
@@ -590,7 +592,7 @@ useEffect(() => {
               })}
 
               {/* Swing Points */}
-              {showSwingPoints && swingPoints.highs.map((point, index) => (
+              {showSwingPoints && swingPoints.highs.map((point: any, index: number) => (
                 <ReferenceDot
                   key={`high-${index}`}
                   x={point.date}
@@ -602,7 +604,7 @@ useEffect(() => {
                 />
               ))}
               
-              {showSwingPoints && swingPoints.lows.map((point, index) => (
+              {showSwingPoints && swingPoints.lows.map((point: any, index: number) => (
                 <ReferenceDot
                   key={`low-${index}`}
                   x={point.date}
