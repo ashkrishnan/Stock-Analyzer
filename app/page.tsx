@@ -39,23 +39,18 @@ const StockAnalyzer: React.FC = () => {
     return result;
   };
 
-  // Fetch real stock data from Yahoo Finance API
+  // Fetch real stock data using our API proxy
   const fetchStockData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      // Get the date range (1 year ago to today)
-      const endDate = Math.floor(Date.now() / 1000);
-      const startDate = Math.floor((Date.now() - 365 * 24 * 60 * 60 * 1000) / 1000);
-      
-      // Yahoo Finance API endpoint
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${startDate}&period2=${endDate}&interval=1d&includePrePost=true&events=div%7Csplit`;
-      
-      const response = await fetch(url);
+      // Call our API route instead of Yahoo Finance directly
+      const response = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}`);
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
