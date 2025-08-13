@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter, ReferenceLine } from 'recharts';
 
 interface StockData {
   date: string;
@@ -13,6 +13,17 @@ interface ChartData extends StockData {
   ma20?: number | null;
   ma50?: number | null;
   ma200?: number | null;
+  isSupport?: boolean;
+  isResistance?: boolean;
+  supportLevel?: number;
+  resistanceLevel?: number;
+}
+
+interface SupportResistanceLevel {
+  price: number;
+  date: string;
+  type: 'support' | 'resistance';
+  strength: number;
 }
 
 const StockAnalyzer: React.FC = () => {
@@ -23,7 +34,8 @@ const StockAnalyzer: React.FC = () => {
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [showMA20, setShowMA20] = useState<boolean>(true);
   const [showMA50, setShowMA50] = useState<boolean>(true);
-  const [showMA200, setShowMA200] = useState<boolean>(true);
+  const [supportResistanceLevels, setSupportResistanceLevels] = useState<SupportResistanceLevel[]>([]);
+  const [showSupportResistance, setShowSupportResistance] = useState<boolean>(true);
 
   // Calculate moving average
   const calculateMA = (data: number[], period: number): (number | null)[] => {
@@ -37,6 +49,72 @@ const StockAnalyzer: React.FC = () => {
       }
     }
     return result;
+  };
+
+  // Detect swing highs (resistance) and swing lows (support)
+  const detectSupportResistance = (data: StockData[]): SupportResistanceLevel[] => {
+    const levels: SupportResistanceLevel[] = [];
+    const lookbackPeriod = 10; // Look at 10 days on each side
+    const minDistance = 20; // Minimum days between levels
+    
+    for (let i = lookbackPeriod; i < data.length - lookbackPeriod; i++) {
+      const currentPrice = data[i].price;
+      const leftPrices = data.slice(i - lookbackPeriod, i).map(d => d.price);
+      const rightPrices = data.slice(i + 1, i + lookbackPeriod + 1).map(d => d.price);
+      
+      // Check for swing high (resistance)
+      const isSwingHigh = leftPrices.every(p => p < currentPrice) && 
+                         rightPrices.every(p => p < currentPrice);
+      
+      // Check for swing low (support)
+      const isSwingLow = leftPrices.every(p => p > currentPrice) && 
+                        rightPrices.every(p => p > currentPrice);
+      
+      if (isSwingHigh || isSwingLow) {
+        // Check if this level is far enough from existing levels
+        const tooClose = levels.some(level => 
+          Math.abs(level.price - currentPrice) < (currentPrice * 0.02) || // Within 2%
+          Math.abs(data.findIndex(d => d.date === level.date) - i) < minDistance
+        );
+        
+        if (!tooClose) {
+          levels.push({
+            price: currentPrice,
+            date: data[i].date,
+            type: isSwingHigh ? 'resistance' : 'support',
+            strength: calculateLevelStrength(data, i, currentPrice)
+          });
+        }
+      }
+    }
+    
+    // Sort by strength and keep only the strongest levels
+    return levels
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, 8); // Keep top 8 levels
+  };
+
+  // Calculate the strength of a support/resistance level
+  const calculateLevelStrength = (data: StockData[], index: number, price: number): number => {
+    let strength = 1;
+    const tolerance = price * 0.01; // 1% tolerance
+    
+    // Count how many times price touched this level
+    for (let i = 0; i < data.length; i++) {
+      if (i !== index && Math.abs(data[i].price - price) <= tolerance) {
+        strength += 1;
+      }
+    }
+    
+    // Add strength based on volume at this level
+    if (data[index].volume && data[index].volume! > 0) {
+      const avgVolume = data.reduce((sum, d) => sum + (d.volume || 0), 0) / data.length;
+      if (data[index].volume! > avgVolume * 1.5) {
+        strength += 2;
+      }
+    }
+    
+    return strength;
   };
 
   // Fetch real stock data using Twelve Data API (free tier with better CORS support)
@@ -111,12 +189,28 @@ const StockAnalyzer: React.FC = () => {
       const ma50 = calculateMA(prices, 50);
       const ma200 = calculateMA(prices, 200);
 
-      const combinedData: ChartData[] = stockData.map((item, index) => ({
-        ...item,
-        ma20: ma20[index],
-        ma50: ma50[index],
-        ma200: ma200[index]
-      }));
+      // Detect support and resistance levels
+      const srLevels = detectSupportResistance(stockData);
+      setSupportResistanceLevels(srLevels);
+
+      const combinedData: ChartData[] = stockData.map((item, index) => {
+        // Check if this point is a support or resistance level
+        const isSupport = srLevels.some(level => 
+          level.date === item.date && level.type === 'support'
+        );
+        const isResistance = srLevels.some(level => 
+          level.date === item.date && level.type === 'resistance'
+        );
+
+        return {
+          ...item,
+          ma20: ma20[index],
+          ma50: ma50[index],
+          ma200: ma200[index],
+          isSupport,
+          isResistance
+        };
+      });
 
       setChartData(combinedData);
     }
@@ -262,6 +356,15 @@ const StockAnalyzer: React.FC = () => {
                 />
                 <span className="ml-2 text-sm text-gray-700">200-day Moving Average</span>
               </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={showSupportResistance}
+                  onChange={(e) => setShowSupportResistance(e.target.checked)}
+                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Support & Resistance Levels</span>
+              </label>
             </div>
           </div>
         )}
@@ -281,21 +384,58 @@ const StockAnalyzer: React.FC = () => {
                   />
                   <YAxis 
                     tick={{ fontSize: 12 }}
-                    tickFormatter={(value) => `$${value}`}
+                    tickFormatter={(value) => `${value}`}
                   />
                   <Tooltip 
                     formatter={formatTooltipValue}
                     labelFormatter={(date) => new Date(date).toLocaleDateString()}
                   />
                   <Legend />
+                  
+                  {/* Support and Resistance Reference Lines */}
+                  {showSupportResistance && supportResistanceLevels.map((level, index) => (
+                    <ReferenceLine 
+                      key={`${level.type}-${index}`}
+                      y={level.price} 
+                      stroke={level.type === 'resistance' ? '#ef4444' : '#10b981'} 
+                      strokeDasharray="3 3" 
+                      strokeWidth={2}
+                      label={{
+                        value: `${level.type === 'resistance' ? 'R' : 'S'}: ${level.price.toFixed(2)}`,
+                        position: 'insideTopRight',
+                        style: { 
+                          fontSize: '10px', 
+                          fill: level.type === 'resistance' ? '#ef4444' : '#10b981',
+                          fontWeight: 'bold'
+                        }
+                      }}
+                    />
+                  ))}
+                  
                   <Line 
                     type="monotone" 
                     dataKey="price" 
                     stroke="#1f2937" 
                     strokeWidth={2}
                     name="Price"
-                    dot={false}
+                    dot={(props) => {
+                      const { cx, cy, payload } = props;
+                      if (showSupportResistance && (payload?.isSupport || payload?.isResistance)) {
+                        return (
+                          <circle
+                            cx={cx}
+                            cy={cy}
+                            r={6}
+                            fill={payload.isResistance ? '#ef4444' : '#10b981'}
+                            stroke="#ffffff"
+                            strokeWidth={2}
+                          />
+                        );
+                      }
+                      return null;
+                    }}
                   />
+                  
                   {showMA20 && (
                     <Line 
                       type="monotone" 
@@ -334,6 +474,55 @@ const StockAnalyzer: React.FC = () => {
                   )}
                 </LineChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* Support & Resistance Levels */}
+        {supportResistanceLevels.length > 0 && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Support & Resistance Levels</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="text-md font-medium text-green-700 mb-3">Support Levels</h4>
+                {supportResistanceLevels
+                  .filter(level => level.type === 'support')
+                  .sort((a, b) => b.price - a.price)
+                  .slice(0, 4)
+                  .map((level, index) => (
+                    <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-sm text-gray-600">
+                        {new Date(level.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                      <span className="text-lg font-bold text-green-600">
+                        ${level.price.toFixed(2)}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        Strength: {level.strength}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+              <div>
+                <h4 className="text-md font-medium text-red-700 mb-3">Resistance Levels</h4>
+                {supportResistanceLevels
+                  .filter(level => level.type === 'resistance')
+                  .sort((a, b) => a.price - b.price)
+                  .slice(0, 4)
+                  .map((level, index) => (
+                    <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-sm text-gray-600">
+                        {new Date(level.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                      <span className="text-lg font-bold text-red-600">
+                        ${level.price.toFixed(2)}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        Strength: {level.strength}
+                      </span>
+                    </div>
+                  ))}
+              </div>
             </div>
           </div>
         )}
