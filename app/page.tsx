@@ -39,50 +39,47 @@ const StockAnalyzer: React.FC = () => {
     return result;
   };
 
-  // Fetch real stock data using Finnhub API (free tier)
+  // Fetch real stock data using Twelve Data API (free tier with better CORS support)
   const fetchStockData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      // Finnhub free API key - get yours at https://finnhub.io
-      const API_KEY = 'd2ea6o1r01qr1ro8unlgd2ea6o1r01qr1ro8unm0'; // Replace with your free API key for better reliability
+      // Twelve Data free API - better CORS support than Finnhub
+      // Get your free API key at https://twelvedata.com
+      const API_KEY = 'demo'; // Replace with your free API key for better reliability
       
-      // Get current quote
-      const quoteResponse = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${API_KEY}`);
-      const quoteData = await quoteResponse.json();
+      // Get historical data (includes current price)
+      const response = await fetch(
+        `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=365&apikey=${API_KEY}&format=JSON`
+      );
       
-      if (!quoteResponse.ok || quoteData.error) {
-        throw new Error('Invalid symbol or API limit reached');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      if (quoteData.c === 0) {
+      const data = await response.json();
+      
+      // Check for API errors
+      if (data.status === 'error' || data.code) {
+        throw new Error(data.message || 'Invalid symbol or API limit reached');
+      }
+      
+      if (!data.values || data.values.length === 0) {
         throw new Error('No data available for this symbol');
       }
       
-      // Get historical data (1 year)
-      const endDate = Math.floor(Date.now() / 1000);
-      const startDate = Math.floor((Date.now() - 365 * 24 * 60 * 60 * 1000) / 1000);
-      
-      const historyResponse = await fetch(
-        `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${startDate}&to=${endDate}&token=${API_KEY}`
-      );
-      const historyData = await historyResponse.json();
-      
-      if (!historyResponse.ok || historyData.s !== 'ok') {
-        throw new Error('Failed to fetch historical data');
-      }
-      
       // Transform data to our format
-      const transformedData: StockData[] = historyData.t.map((timestamp: number, index: number) => ({
-        date: new Date(timestamp * 1000).toISOString().split('T')[0],
-        price: parseFloat(historyData.c[index].toFixed(2)),
-        volume: historyData.v[index] || 0
-      }));
+      const transformedData: StockData[] = data.values
+        .reverse() // Twelve Data returns newest first, we want oldest first
+        .map((item: any) => ({
+          date: item.datetime,
+          price: parseFloat(parseFloat(item.close).toFixed(2)),
+          volume: parseInt(item.volume) || 0
+        }));
       
-      // Update the last price with current real-time price
-      if (transformedData.length > 0) {
-        transformedData[transformedData.length - 1].price = parseFloat(quoteData.c.toFixed(2));
+      if (transformedData.length === 0) {
+        throw new Error('No valid price data found for this symbol');
       }
       
       setStockData(transformedData);
@@ -90,10 +87,12 @@ const StockAnalyzer: React.FC = () => {
     } catch (err) {
       console.error('Error fetching stock data:', err);
       if (err instanceof Error) {
-        if (err.message.includes('Invalid symbol')) {
-          setError(`"${symbol}" is not a valid stock symbol. Please try a different symbol.`);
-        } else if (err.message.includes('API limit')) {
-          setError('API rate limit reached. Please wait a moment or get a free API key from Finnhub.io');
+        if (err.message.includes('Invalid symbol') || err.message.includes('not found')) {
+          setError(`"${symbol}" is not a valid stock symbol. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
+        } else if (err.message.includes('API limit') || err.message.includes('limit')) {
+          setError('API rate limit reached. Please wait a moment or get a free API key from twelvedata.com');
+        } else if (err.message.includes('HTTP error')) {
+          setError('Unable to fetch stock data. Please check your internet connection and try again.');
         } else {
           setError(`Error: ${err.message}`);
         }
@@ -169,7 +168,7 @@ const StockAnalyzer: React.FC = () => {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Stock Analyzer</h1>
           <p className="text-lg text-gray-600">Analyze real-time stock prices with moving averages</p>
-          <p className="text-sm text-gray-500 mt-1">Live data from Finnhub API - Get your free API key at finnhub.io</p>
+          <p className="text-sm text-gray-500 mt-1">Live data from Twelve Data API - Get your free API key at twelvedata.com</p>
         </div>
 
         {/* Stock Input Form */}
