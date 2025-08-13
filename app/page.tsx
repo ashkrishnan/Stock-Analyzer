@@ -52,47 +52,65 @@ const StockAnalyzer: React.FC = () => {
     return result;
   };
 
-  // Detect swing highs (resistance) and swing lows (support)
+  // Detect swing highs (resistance) and swing lows (support) - improved algorithm
   const detectSupportResistance = (data: StockData[]): SupportResistanceLevel[] => {
     const levels: SupportResistanceLevel[] = [];
-    const lookbackPeriod = 10; // Look at 10 days on each side
-    const minDistance = 20; // Minimum days between levels
+    const lookbackPeriod = 8; // Look at 8 days on each side (more sensitive)
+    const currentPrice = data[data.length - 1].price;
     
-    for (let i = lookbackPeriod; i < data.length - lookbackPeriod; i++) {
-      const currentPrice = data[i].price;
-      const leftPrices = data.slice(i - lookbackPeriod, i).map(d => d.price);
-      const rightPrices = data.slice(i + 1, i + lookbackPeriod + 1).map(d => d.price);
+    // Focus on recent data (last 6 months instead of full year)
+    const recentDataStart = Math.max(0, data.length - 180); // Last 180 days
+    const recentData = data.slice(recentDataStart);
+    
+    for (let i = lookbackPeriod; i < recentData.length - lookbackPeriod; i++) {
+      const actualIndex = recentDataStart + i; // Actual index in full dataset
+      const price = recentData[i].price;
+      const leftPrices = recentData.slice(i - lookbackPeriod, i).map(d => d.price);
+      const rightPrices = recentData.slice(i + 1, i + lookbackPeriod + 1).map(d => d.price);
       
-      // Check for swing high (resistance)
-      const isSwingHigh = leftPrices.every(p => p < currentPrice) && 
-                         rightPrices.every(p => p < currentPrice);
+      // Check for swing high (resistance) - must be above current price to be relevant
+      const isSwingHigh = leftPrices.every(p => p <= price) && 
+                         rightPrices.every(p => p <= price) &&
+                         price > currentPrice * 0.98; // Only if within 2% above current price
       
-      // Check for swing low (support)
-      const isSwingLow = leftPrices.every(p => p > currentPrice) && 
-                        rightPrices.every(p => p > currentPrice);
+      // Check for swing low (support) - must be below current price to be relevant  
+      const isSwingLow = leftPrices.every(p => p >= price) && 
+                        rightPrices.every(p => p >= price) &&
+                        price < currentPrice * 1.02; // Only if within 2% below current price
       
       if (isSwingHigh || isSwingLow) {
         // Check if this level is far enough from existing levels
         const tooClose = levels.some(level => 
-          Math.abs(level.price - currentPrice) < (currentPrice * 0.02) || // Within 2%
-          Math.abs(data.findIndex(d => d.date === level.date) - i) < minDistance
+          Math.abs(level.price - price) < (currentPrice * 0.015) // Within 1.5% of current price
         );
         
         if (!tooClose) {
+          // Calculate how recent this level is (more recent = higher strength)
+          const recencyBonus = (i / recentData.length) * 5; // Up to 5 bonus points for recent levels
+          
           levels.push({
-            price: currentPrice,
-            date: data[i].date,
+            price: price,
+            date: recentData[i].date,
             type: isSwingHigh ? 'resistance' : 'support',
-            strength: calculateLevelStrength(data, i, currentPrice)
+            strength: calculateLevelStrength(data, actualIndex, price) + recencyBonus
           });
         }
       }
     }
     
-    // Sort by strength and keep only the strongest levels
-    return levels
-      .sort((a, b) => b.strength - a.strength)
-      .slice(0, 8); // Keep top 8 levels
+    // Separate and filter levels
+    const resistanceLevels = levels
+      .filter(level => level.type === 'resistance' && level.price > currentPrice * 0.99)
+      .sort((a, b) => a.price - b.price) // Sort resistance from lowest to highest
+      .slice(0, 4);
+      
+    const supportLevels = levels
+      .filter(level => level.type === 'support' && level.price < currentPrice * 1.01)
+      .sort((a, b) => b.price - a.price) // Sort support from highest to lowest
+      .slice(0, 4);
+    
+    return [...resistanceLevels, ...supportLevels]
+      .sort((a, b) => b.strength - a.strength);
   };
 
   // Calculate the strength of a support/resistance level
