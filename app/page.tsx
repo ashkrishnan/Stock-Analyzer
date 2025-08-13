@@ -419,22 +419,7 @@ const StockAnalyzer: React.FC = () => {
                     stroke="#1f2937" 
                     strokeWidth={2}
                     name="Price"
-                    dot={(props) => {
-                      const { cx, cy, payload } = props;
-                      if (showSupportResistance && (payload?.isSupport || payload?.isResistance)) {
-                        return (
-                          <circle
-                            cx={cx}
-                            cy={cy}
-                            r={6}
-                            fill={payload.isResistance ? '#ef4444' : '#10b981'}
-                            stroke="#ffffff"
-                            strokeWidth={2}
-                          />
-                        );
-                      }
-                      return null;
-                    }}
+                    dot={false}
                   />
                   
                   {showMA20 && (
