@@ -34,6 +34,7 @@ const StockAnalyzer: React.FC = () => {
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [showMA20, setShowMA20] = useState<boolean>(true);
   const [showMA50, setShowMA50] = useState<boolean>(true);
+  const [showMA200, setShowMA200] = useState<boolean>(true);
   const [supportResistanceLevels, setSupportResistanceLevels] = useState<SupportResistanceLevel[]>([]);
   const [showSupportResistance, setShowSupportResistance] = useState<boolean>(true);
 
