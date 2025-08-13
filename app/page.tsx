@@ -39,92 +39,66 @@ const StockAnalyzer: React.FC = () => {
     return result;
   };
 
-  // Generate realistic stock data based on real market patterns
-  const generateRealisticStockData = (symbol: string): StockData[] => {
-    const data: StockData[] = [];
-    
-    // Real-world base prices for popular stocks (current market prices)
-    const basePrices: Record<string, number> = {
-      'AAPL': 225.00,
-      'MSFT': 415.00,
-      'GOOGL': 175.00,
-      'TSLA': 345.20,
-      'AMZN': 185.00,
-      'NVDA': 140.00,
-      'META': 785.57,
-      'NFLX': 700.00,
-      'AMD': 140.00,
-      'INTC': 23.00,
-      'ORCL': 130.00,
-      'CRM': 280.00,
-      'SHOP': 148.00,
-      'ANET': 138.93,
-      'DELL': 141.46,
-    };
-    
-    const basePrice = basePrices[symbol] || 100.00;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 365);
-
-    // Generate realistic price movements
-    let currentPrice = basePrice * 0.8; // Start 20% lower for year-long growth
-    
-    for (let i = 0; i < 365; i++) {
-      const currentDate = new Date(startDate);
-      currentDate.setDate(startDate.getDate() + i);
-      
-      // Market trends: general upward trend with volatility
-      const trendFactor = (i / 365) * 0.25; // 25% annual growth trend
-      const volatility = (Math.random() - 0.5) * 0.04; // ±2% daily volatility
-      const weeklyPattern = Math.sin((i % 7) / 7 * Math.PI) * 0.01; // Weekly patterns
-      const monthlyPattern = Math.sin((i % 30) / 30 * Math.PI) * 0.02; // Monthly patterns
-      
-      // Simulate market events (occasional larger moves)
-      const eventChance = Math.random();
-      let eventMultiplier = 1;
-      if (eventChance > 0.98) eventMultiplier = 1.05; // 2% chance of +5% day
-      else if (eventChance < 0.02) eventMultiplier = 0.95; // 2% chance of -5% day
-      
-      currentPrice = currentPrice * (1 + trendFactor/365 + volatility + weeklyPattern + monthlyPattern) * eventMultiplier;
-      
-      data.push({
-        date: currentDate.toISOString().split('T')[0],
-        price: parseFloat(currentPrice.toFixed(2)),
-        volume: Math.floor(Math.random() * 50000000) + 10000000 // 10M-60M volume
-      });
-    }
-    
-    // Ensure the last price matches the expected current price
-    data[data.length - 1].price = basePrice;
-    
-    return data;
-  };
-
-  // Fetch stock data (using realistic simulation)
+  // Fetch real stock data using Finnhub API (free tier)
   const fetchStockData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      // Simulate API call delay for realistic feel
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Finnhub free API key - get yours at https://finnhub.io
+      const API_KEY = 'd2ea6o1r01qr1ro8unlgd2ea6o1r01qr1ro8unm0'; // Replace with your free API key for better reliability
       
-      // Check if it's a valid symbol
-      const validSymbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'AMZN', 'NVDA', 'META', 'NFLX', 'AMD', 'INTC', 'ORCL', 'CRM', 'SHOP', 'ANET', 'DELL'];
+      // Get current quote
+      const quoteResponse = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${API_KEY}`);
+      const quoteData = await quoteResponse.json();
       
-      if (!validSymbols.includes(symbol)) {
-        throw new Error(`Invalid symbol. Try: ${validSymbols.join(', ')}`);
+      if (!quoteResponse.ok || quoteData.error) {
+        throw new Error('Invalid symbol or API limit reached');
       }
       
-      const data = generateRealisticStockData(symbol);
-      setStockData(data);
+      if (quoteData.c === 0) {
+        throw new Error('No data available for this symbol');
+      }
+      
+      // Get historical data (1 year)
+      const endDate = Math.floor(Date.now() / 1000);
+      const startDate = Math.floor((Date.now() - 365 * 24 * 60 * 60 * 1000) / 1000);
+      
+      const historyResponse = await fetch(
+        `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${startDate}&to=${endDate}&token=${API_KEY}`
+      );
+      const historyData = await historyResponse.json();
+      
+      if (!historyResponse.ok || historyData.s !== 'ok') {
+        throw new Error('Failed to fetch historical data');
+      }
+      
+      // Transform data to our format
+      const transformedData: StockData[] = historyData.t.map((timestamp: number, index: number) => ({
+        date: new Date(timestamp * 1000).toISOString().split('T')[0],
+        price: parseFloat(historyData.c[index].toFixed(2)),
+        volume: historyData.v[index] || 0
+      }));
+      
+      // Update the last price with current real-time price
+      if (transformedData.length > 0) {
+        transformedData[transformedData.length - 1].price = parseFloat(quoteData.c.toFixed(2));
+      }
+      
+      setStockData(transformedData);
       
     } catch (err) {
       console.error('Error fetching stock data:', err);
       if (err instanceof Error) {
-        setError(err.message);
+        if (err.message.includes('Invalid symbol')) {
+          setError(`"${symbol}" is not a valid stock symbol. Please try a different symbol.`);
+        } else if (err.message.includes('API limit')) {
+          setError('API rate limit reached. Please wait a moment or get a free API key from Finnhub.io');
+        } else {
+          setError(`Error: ${err.message}`);
+        }
       } else {
-        setError('Please enter a valid stock symbol (AAPL, MSFT, GOOGL, TSLA, META, etc.)');
+        setError('Failed to fetch stock data. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -194,8 +168,8 @@ const StockAnalyzer: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Stock Analyzer</h1>
-          <p className="text-lg text-gray-600">Analyze stock prices with technical indicators and moving averages</p>
-          <p className="text-sm text-gray-500 mt-1">Realistic market data simulation with current price references</p>
+          <p className="text-lg text-gray-600">Analyze real-time stock prices with moving averages</p>
+          <p className="text-sm text-gray-500 mt-1">Live data from Finnhub API - Get your free API key at finnhub.io</p>
         </div>
 
         {/* Stock Input Form */}
