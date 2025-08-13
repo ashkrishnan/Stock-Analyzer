@@ -47,7 +47,7 @@ const StockAnalyzer: React.FC = () => {
     try {
       // Twelve Data free API - better CORS support than Finnhub
       // Get your free API key at https://twelvedata.com
-      const API_KEY = 'demo'; // Replace with your free API key for better reliability
+      const API_KEY = 'ac4cc9d968f841f6b45851db25b9e8ab'; // Replace with your free API key for better reliability
       
       // Get historical data (includes current price)
       const response = await fetch(
